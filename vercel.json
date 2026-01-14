@@ -1,27 +1,7 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "api/**/*.py",
-      "use": "@vercel/python"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/voices/([^/]+)",
-      "dest": "/api/voices/[id].py"
-    },
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/$1.py"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/api/index.py"
-    }
-  ],
   "functions": {
-    "api/tts.py": {
+    "api/**/*.py": {
+      "runtime": "python3.9",
       "maxDuration": 60
     }
   }
