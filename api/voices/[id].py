@@ -13,7 +13,7 @@ BLOB_TOKEN = os.environ.get('BLOB_READ_WRITE_TOKEN', '')
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from _utils import verify_api_key, error_response, json_response, cors_headers
+from utils import verify_api_key, error_response, json_response, cors_headers
 
 
 def blob_list(prefix=''):
