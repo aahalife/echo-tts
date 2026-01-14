@@ -1,7 +1,18 @@
 {
+  "builds": [
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api/index.py"
+    }
+  ],
   "functions": {
-    "api/**/*.py": {
-      "runtime": "python3.9",
+    "api/index.py": {
       "maxDuration": 60
     }
   }
