@@ -200,11 +200,13 @@ Text prompts follow the WhisperD transcription format:
 
 ## Response Times
 
-- **Cold start:** ~30-60 seconds (model loading)
-- **Warm inference:** 5-15 seconds per request
+- **Cold start:** ~45-60 seconds (model loading + inference)
+- **Warm inference:** 5-20 seconds per request (depending on text length)
 - **Timeout:** 300 seconds (5 minutes)
 
 The service scales down after 2 minutes of inactivity to save costs.
+
+**Note on Streaming:** The response uses HTTP chunked transfer encoding, so clients receive audio data progressively. However, the underlying diffusion model generates complete audio in a single pass, so true real-time streaming (where audio plays before generation completes) is not supported.
 
 ---
 
