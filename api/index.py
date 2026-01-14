@@ -121,106 +121,7 @@ def health():
         'timestamp': datetime.utcnow().isoformat() + 'Z'
     })
 
-@app.route('/api/voices', methods=['GET', 'POST', 'OPTIONS'])
-def voices():
-    if request.method == 'OPTIONS':
-        return '', 200
-    
-    auth_error = require_auth()
-    if auth_error:
-        return auth_error
-    
-    if request.method == 'GET':
-        return list_voices()
-    else:
-        return create_voice()
-
-def list_voices():
-    if not BLOB_TOKEN:
-        return jsonify({'voices': [], 'note': 'Storage not configured'})
-    
-    try:
-        blobs = blob_list(prefix='voices/')
-        voices = []
-        
-        for blob in blobs:
-            if blob.get('pathname', '').endswith('.json'):
-                try:
-                    metadata = json.loads(blob_get(blob['url']))
-                    voices.append({
-                        'id': metadata.get('id'),
-                        'name': metadata.get('name'),
-                        'created_at': metadata.get('created_at'),
-                        'description': metadata.get('description', ''),
-                    })
-                except:
-                    pass
-        
-        return jsonify({'voices': voices})
-    except Exception as e:
-        return jsonify({'error': f'Failed to list voices: {str(e)}'}), 500
-
-def create_voice():
-    if not BLOB_TOKEN:
-        return jsonify({'error': 'Storage not configured'}), 503
-    
-    try:
-        if 'audio' not in request.files:
-            return jsonify({'error': 'No audio file provided'}), 400
-        
-        audio_file = request.files['audio']
-        audio_data = audio_file.read()
-        original_filename = audio_file.filename or 'audio.wav'
-        
-        voice_id = request.form.get('id', str(uuid.uuid4())[:8])
-        name = request.form.get('name', voice_id)
-        description = request.form.get('description', '')
-        
-        # Sanitize voice ID
-        voice_id = ''.join(c for c in voice_id if c.isalnum() or c in '-_').lower()
-        if not voice_id:
-            return jsonify({'error': 'Invalid voice ID'}), 400
-        
-        # Check if exists
-        try:
-            existing = blob_list(prefix=f'voices/{voice_id}.')
-            if any(b.get('pathname', '').endswith('.json') for b in existing):
-                return jsonify({'error': f'Voice ID already exists: {voice_id}'}), 409
-        except:
-            pass
-        
-        # Get extension
-        ext = original_filename.rsplit('.', 1)[-1].lower() if '.' in original_filename else 'wav'
-        if ext not in ['wav', 'mp3', 'ogg', 'flac', 'm4a', 'aac']:
-            ext = 'wav'
-        
-        content_types = {'wav': 'audio/wav', 'mp3': 'audio/mpeg', 'ogg': 'audio/ogg', 
-                        'flac': 'audio/flac', 'm4a': 'audio/mp4', 'aac': 'audio/aac'}
-        
-        # Upload audio
-        audio_result = blob_put(f'voices/{voice_id}.{ext}', audio_data, content_types.get(ext, 'audio/wav'))
-        
-        # Upload metadata
-        metadata = {
-            'id': voice_id,
-            'name': name,
-            'description': description,
-            'created_at': datetime.utcnow().isoformat() + 'Z',
-            'audio_url': audio_result.get('url'),
-            'file_size': len(audio_data),
-        }
-        blob_put(f'voices/{voice_id}.json', json.dumps(metadata).encode(), 'application/json')
-        
-        return jsonify({
-            'id': voice_id,
-            'name': name,
-            'created_at': metadata['created_at'],
-            'message': 'Voice registered successfully'
-        }), 201
-        
-    except Exception as e:
-        return jsonify({'error': f'Failed to create voice: {str(e)}'}), 500
-
+# Voice detail route MUST come before the list route
 @app.route('/api/voices/<voice_id>', methods=['GET', 'DELETE', 'OPTIONS'])
 def voice_detail(voice_id):
     if request.method == 'OPTIONS':
@@ -234,32 +135,121 @@ def voice_detail(voice_id):
         return jsonify({'error': 'Storage not configured'}), 503
     
     if request.method == 'GET':
-        return get_voice(voice_id)
-    else:
-        return delete_voice(voice_id)
-
-def get_voice(voice_id):
-    try:
-        blobs = blob_list(prefix=f'voices/{voice_id}.')
-        for blob in blobs:
-            if blob.get('pathname', '').endswith('.json'):
-                metadata = json.loads(blob_get(blob['url']))
-                return jsonify(metadata)
-        return jsonify({'error': f'Voice not found: {voice_id}'}), 404
-    except Exception as e:
-        return jsonify({'error': f'Failed to get voice: {str(e)}'}), 500
-
-def delete_voice(voice_id):
-    try:
-        blobs = blob_list(prefix=f'voices/{voice_id}.')
-        if not blobs:
+        try:
+            blobs = blob_list(prefix=f'voices/{voice_id}.')
+            for blob in blobs:
+                if blob.get('pathname', '').endswith('.json'):
+                    metadata = json.loads(blob_get(blob['url']))
+                    return jsonify(metadata)
             return jsonify({'error': f'Voice not found: {voice_id}'}), 404
+        except Exception as e:
+            return jsonify({'error': f'Failed to get voice: {str(e)}'}), 500
+    else:  # DELETE
+        try:
+            blobs = blob_list(prefix=f'voices/{voice_id}.')
+            if not blobs:
+                return jsonify({'error': f'Voice not found: {voice_id}'}), 404
+            urls = [blob['url'] for blob in blobs]
+            blob_delete(urls)
+            return jsonify({'message': f'Voice deleted: {voice_id}'})
+        except Exception as e:
+            return jsonify({'error': f'Failed to delete voice: {str(e)}'}), 500
+
+@app.route('/api/voices', methods=['GET', 'POST', 'OPTIONS'])
+def voices():
+    if request.method == 'OPTIONS':
+        return '', 200
+    
+    auth_error = require_auth()
+    if auth_error:
+        return auth_error
+    
+    if request.method == 'GET':
+        # List voices
+        if not BLOB_TOKEN:
+            return jsonify({'voices': [], 'note': 'Storage not configured'})
         
-        urls = [blob['url'] for blob in blobs]
-        blob_delete(urls)
-        return jsonify({'message': f'Voice deleted: {voice_id}'})
-    except Exception as e:
-        return jsonify({'error': f'Failed to delete voice: {str(e)}'}), 500
+        try:
+            blobs = blob_list(prefix='voices/')
+            voices_list = []
+            
+            for blob in blobs:
+                if blob.get('pathname', '').endswith('.json'):
+                    try:
+                        metadata = json.loads(blob_get(blob['url']))
+                        voices_list.append({
+                            'id': metadata.get('id'),
+                            'name': metadata.get('name'),
+                            'created_at': metadata.get('created_at'),
+                            'description': metadata.get('description', ''),
+                        })
+                    except:
+                        pass
+            
+            return jsonify({'voices': voices_list})
+        except Exception as e:
+            return jsonify({'error': f'Failed to list voices: {str(e)}'}), 500
+    
+    else:  # POST - Create voice
+        if not BLOB_TOKEN:
+            return jsonify({'error': 'Storage not configured'}), 503
+        
+        try:
+            if 'audio' not in request.files:
+                return jsonify({'error': 'No audio file provided'}), 400
+            
+            audio_file = request.files['audio']
+            audio_data = audio_file.read()
+            original_filename = audio_file.filename or 'audio.wav'
+            
+            voice_id = request.form.get('id', str(uuid.uuid4())[:8])
+            name = request.form.get('name', voice_id)
+            description = request.form.get('description', '')
+            
+            # Sanitize voice ID
+            voice_id = ''.join(c for c in voice_id if c.isalnum() or c in '-_').lower()
+            if not voice_id:
+                return jsonify({'error': 'Invalid voice ID'}), 400
+            
+            # Check if exists
+            try:
+                existing = blob_list(prefix=f'voices/{voice_id}.')
+                if any(b.get('pathname', '').endswith('.json') for b in existing):
+                    return jsonify({'error': f'Voice ID already exists: {voice_id}'}), 409
+            except:
+                pass
+            
+            # Get extension
+            ext = original_filename.rsplit('.', 1)[-1].lower() if '.' in original_filename else 'wav'
+            if ext not in ['wav', 'mp3', 'ogg', 'flac', 'm4a', 'aac']:
+                ext = 'wav'
+            
+            content_types = {'wav': 'audio/wav', 'mp3': 'audio/mpeg', 'ogg': 'audio/ogg', 
+                            'flac': 'audio/flac', 'm4a': 'audio/mp4', 'aac': 'audio/aac'}
+            
+            # Upload audio
+            audio_result = blob_put(f'voices/{voice_id}.{ext}', audio_data, content_types.get(ext, 'audio/wav'))
+            
+            # Upload metadata
+            metadata = {
+                'id': voice_id,
+                'name': name,
+                'description': description,
+                'created_at': datetime.utcnow().isoformat() + 'Z',
+                'audio_url': audio_result.get('url'),
+                'file_size': len(audio_data),
+            }
+            blob_put(f'voices/{voice_id}.json', json.dumps(metadata).encode(), 'application/json')
+            
+            return jsonify({
+                'id': voice_id,
+                'name': name,
+                'created_at': metadata['created_at'],
+                'message': 'Voice registered successfully'
+            }), 201
+            
+        except Exception as e:
+            return jsonify({'error': f'Failed to create voice: {str(e)}'}), 500
 
 @app.route('/api/tts', methods=['POST', 'OPTIONS'])
 def tts():
@@ -304,7 +294,7 @@ def tts():
             val = data['speaker_kv_enable']
             params['speaker_kv_enable'] = val if isinstance(val, bool) else str(val).lower() in ('true', '1', 'yes')
         
-        # Get audio URL
+        # Get audio URL from voice_id
         audio_url = None
         if voice_id and BLOB_TOKEN:
             blobs = blob_list(prefix=f'voices/{voice_id}.')
