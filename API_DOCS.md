@@ -2,13 +2,17 @@
 
 ## Overview
 
-This API provides voice cloning and text-to-speech capabilities powered by the [Echo-TTS model](https://github.com/jordandare/echo-tts). Voice references can be persisted by ID, allowing reuse without re-uploading audio files.
+This API provides voice cloning and text-to-speech capabilities powered by the [Echo-TTS model](https://github.com/jordandare/echo-tts). The API runs on Modal with GPU acceleration (NVIDIA A10G) for fast inference.
+
+**Base URL:** `https://aahalife--echo-tts-web-app.modal.run`
+
+**Dashboard:** [Modal App Dashboard](https://modal.com/apps/aahalife/main/deployed/echo-tts)
 
 ---
 
 ## Authentication
 
-All endpoints require API key authentication. Provide your API key using one of these methods:
+All endpoints (except health check) require API key authentication. Provide your API key using one of these methods:
 
 ### Option 1: Bearer Token (Recommended)
 ```http
@@ -22,7 +26,7 @@ X-API-Key: YOUR_API_KEY
 
 **Example:**
 ```bash
-curl -H "Authorization: Bearer YOUR_API_KEY" https://echo-tts-seven.vercel.app/api/voices
+curl -H "Authorization: Bearer YOUR_API_KEY" https://aahalife--echo-tts-web-app.modal.run/health
 ```
 
 **Error Response (401 Unauthorized):**
@@ -49,10 +53,33 @@ The API is configured with optimal defaults:
 
 ## Endpoints
 
+### Service Info
+
+```http
+GET /
+```
+
+Returns service information and available endpoints.
+
+**Response:**
+```json
+{
+  "service": "Echo-TTS Modal API",
+  "version": "1.0.0",
+  "gpu": "A10G",
+  "endpoints": {
+    "GET /health": "Health check",
+    "POST /tts": "Generate speech"
+  }
+}
+```
+
+---
+
 ### Health Check
 
 ```http
-GET /api/health
+GET /health
 ```
 
 Returns service health status.
@@ -61,108 +88,8 @@ Returns service health status.
 ```json
 {
   "status": "healthy",
-  "service": "echo-tts-api",
+  "service": "echo-tts-modal",
   "timestamp": "2025-01-14T10:00:00Z"
-}
-```
-
----
-
-### List All Voices
-
-```http
-GET /api/voices
-```
-
-Returns a list of all registered voice IDs with metadata.
-
-**Response:**
-```json
-{
-  "voices": [
-    {
-      "id": "john",
-      "name": "John's Voice",
-      "created_at": "2025-01-14T10:00:00Z",
-      "description": "Male speaker sample"
-    }
-  ]
-}
-```
-
----
-
-### Get Voice Details
-
-```http
-GET /api/voices/{voice_id}
-```
-
-Returns details about a specific registered voice.
-
-**Response:**
-```json
-{
-  "id": "john",
-  "name": "John's Voice",
-  "created_at": "2025-01-14T10:00:00Z",
-  "description": "Male speaker sample",
-  "file_size": 245760,
-  "blob_url": "https://..."
-}
-```
-
----
-
-### Register a New Voice
-
-```http
-POST /api/voices
-Content-Type: multipart/form-data
-```
-
-**Form Fields:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `audio` | file | Yes | Reference audio file (WAV, MP3, OGG, FLAC, M4A, AAC) |
-| `id` | string | No | Custom voice ID (auto-generated if not provided) |
-| `name` | string | No | Display name for the voice |
-| `description` | string | No | Voice description |
-
-**Example:**
-```bash
-curl -X POST https://echo-tts-seven.vercel.app/api/voices \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -F "audio=@reference.wav" \
-  -F "id=john" \
-  -F "name=John's Voice"
-```
-
-**Response (201 Created):**
-```json
-{
-  "id": "john",
-  "name": "John's Voice",
-  "created_at": "2025-01-14T10:00:00Z",
-  "message": "Voice registered successfully"
-}
-```
-
----
-
-### Delete a Voice
-
-```http
-DELETE /api/voices/{voice_id}
-```
-
-Deletes a registered voice and its audio file.
-
-**Response:**
-```json
-{
-  "message": "Voice deleted: john"
 }
 ```
 
@@ -171,18 +98,13 @@ Deletes a registered voice and its audio file.
 ### Generate Speech (TTS)
 
 ```http
-POST /api/tts
-```
-
-Generate speech from text using a registered voice or one-time audio upload.
-
-#### Option A: JSON Body (with registered voice)
-
-```http
+POST /tts
 Content-Type: application/json
 ```
 
-**Body:**
+Generate speech from text using a registered voice.
+
+**Request Body:**
 ```json
 {
   "text": "Hello, this is a test of the voice cloning system.",
@@ -190,45 +112,29 @@ Content-Type: application/json
   "num_steps": 40,
   "rng_seed": 0,
   "speaker_kv_enable": true,
-  "speaker_kv_scale": 1.5
+  "speaker_kv_scale": 1.5,
+  "preset_name": "Independent (High Speaker CFG)"
 }
 ```
 
-#### Option B: Multipart Form (with audio file)
+**Parameters:**
 
-```http
-Content-Type: multipart/form-data
-```
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `text` | string | Yes | - | Text to synthesize |
+| `voice_id` | string | Yes | - | ID of a registered voice |
+| `num_steps` | int | No | 40 | Diffusion steps (1-80) |
+| `rng_seed` | int | No | 0 | Random seed for reproducibility |
+| `speaker_kv_enable` | bool | No | true | Enable speaker KV attention |
+| `speaker_kv_scale` | float | No | 1.5 | Speaker KV scale (1.0-2.0) |
+| `preset_name` | string | No | "Independent (High Speaker CFG)" | Sampler preset |
 
-**Form Fields:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `text` | string | Yes | Text to synthesize |
-| `voice_id` | string | No* | ID of a registered voice |
-| `audio` | file | No* | One-time reference audio file |
-| `num_steps` | int | No | Diffusion steps (default: 40) |
-| `rng_seed` | int | No | Random seed (default: 0) |
-| `speaker_kv_enable` | bool | No | Enable speaker KV (default: true) |
-| `speaker_kv_scale` | float | No | Speaker KV scale (default: 1.5) |
-
-*Either `voice_id` OR `audio` must be provided.
-
-**Example (with registered voice):**
+**Example:**
 ```bash
-curl -X POST https://echo-tts-seven.vercel.app/api/tts \
+curl -X POST https://aahalife--echo-tts-web-app.modal.run/tts \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"text": "Hello world!", "voice_id": "john"}' \
-  --output output.wav
-```
-
-**Example (with audio file):**
-```bash
-curl -X POST https://echo-tts-seven.vercel.app/api/tts \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -F "text=Hello world!" \
-  -F "audio=@reference.wav" \
   --output output.wav
 ```
 
@@ -258,6 +164,22 @@ Returns WAV audio file directly (Content-Type: audio/wav).
 
 ---
 
+## Voice Management
+
+Voices are stored in Vercel Blob storage and referenced by ID. Voice registration is managed separately from the TTS endpoint.
+
+To register a voice, the audio file metadata must be stored in Vercel Blob at `voices/{voice_id}.meta.json` with the format:
+```json
+{
+  "id": "john",
+  "name": "John's Voice",
+  "audio_url": "https://blob.vercel-storage.com/...",
+  "created_at": "2025-01-14T10:00:00Z"
+}
+```
+
+---
+
 ## Text Format
 
 Text prompts follow the WhisperD transcription format:
@@ -278,8 +200,11 @@ Text prompts follow the WhisperD transcription format:
 
 ## Response Times
 
-- **Typical:** 10-30 seconds per request
-- **Note:** Vercel function timeout is set to 60 seconds
+- **Cold start:** ~30-60 seconds (model loading)
+- **Warm inference:** 5-15 seconds per request
+- **Timeout:** 300 seconds (5 minutes)
+
+The service scales down after 2 minutes of inactivity to save costs.
 
 ---
 
@@ -298,13 +223,10 @@ All errors return JSON with an `error` field:
 | Code | Description |
 |------|-------------|
 | 200 | Success |
-| 201 | Created (voice registered) |
 | 400 | Bad request (missing parameters) |
 | 401 | Unauthorized (invalid or missing API key) |
 | 404 | Voice not found |
-| 409 | Conflict (voice ID already exists) |
 | 500 | Server error (TTS generation failed) |
-| 503 | Service unavailable (storage not configured) |
 
 ---
 
@@ -315,25 +237,18 @@ All errors return JSON with an `error` field:
 ```python
 import requests
 
-BASE_URL = "https://echo-tts-seven.vercel.app"
+BASE_URL = "https://aahalife--echo-tts-web-app.modal.run"
 API_KEY = "YOUR_API_KEY"
 
-headers = {"Authorization": f"Bearer {API_KEY}"}
-
-# Register a voice
-with open("reference.wav", "rb") as f:
-    response = requests.post(
-        f"{BASE_URL}/api/voices",
-        headers=headers,
-        files={"audio": f},
-        data={"id": "myvoice", "name": "My Voice"}
-    )
-    print(response.json())
+headers = {
+    "Authorization": f"Bearer {API_KEY}",
+    "Content-Type": "application/json"
+}
 
 # Generate speech
 response = requests.post(
-    f"{BASE_URL}/api/tts",
-    headers={**headers, "Content-Type": "application/json"},
+    f"{BASE_URL}/tts",
+    headers=headers,
     json={
         "text": "Hello from Python!",
         "voice_id": "myvoice"
@@ -343,25 +258,23 @@ response = requests.post(
 if response.status_code == 200:
     with open("output.wav", "wb") as f:
         f.write(response.content)
+    print("Audio saved to output.wav")
+else:
+    print(f"Error: {response.json()}")
 ```
 
 ### JavaScript
 
 ```javascript
-const BASE_URL = "https://echo-tts-seven.vercel.app";
+const BASE_URL = "https://aahalife--echo-tts-web-app.modal.run";
 const API_KEY = "YOUR_API_KEY";
 
-const headers = {
-  "Authorization": `Bearer ${API_KEY}`
-};
-
-// Generate speech
 async function generateSpeech(text, voiceId) {
-  const response = await fetch(`${BASE_URL}/api/tts`, {
+  const response = await fetch(`${BASE_URL}/tts`, {
     method: "POST",
-    headers: { 
-      ...headers,
-      "Content-Type": "application/json" 
+    headers: {
+      "Authorization": `Bearer ${API_KEY}`,
+      "Content-Type": "application/json"
     },
     body: JSON.stringify({ text, voice_id: voiceId })
   });
@@ -371,24 +284,54 @@ async function generateSpeech(text, voiceId) {
   }
   throw new Error(await response.text());
 }
+
+// Usage
+generateSpeech("Hello world!", "myvoice")
+  .then(blob => {
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.play();
+  });
+```
+
+### cURL
+
+```bash
+# Health check
+curl https://aahalife--echo-tts-web-app.modal.run/health
+
+# Generate speech
+curl -X POST https://aahalife--echo-tts-web-app.modal.run/tts \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello world!", "voice_id": "john"}' \
+  --output output.wav
 ```
 
 ---
 
 ## Environment Variables
 
-Set these in your Vercel project:
+Set these in Modal Secrets:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `API_KEY` | Yes | Secret key for API authentication |
-| `BLOB_READ_WRITE_TOKEN` | Yes | Vercel Blob read/write token (auto-added when you create Blob storage) |
-| `HF_SPACE` | No | HuggingFace Space (default: jordand/echo-tts-preview) |
+| `BLOB_READ_WRITE_TOKEN` | Yes | Vercel Blob read/write token for voice storage |
+
+---
+
+## Infrastructure
+
+- **Platform:** [Modal](https://modal.com)
+- **GPU:** NVIDIA A10G (24GB VRAM)
+- **Scaling:** Serverless, scales to zero when idle
+- **Model:** Echo-TTS loaded directly on GPU
 
 ---
 
 ## Notes
 
-- This service uses the [HuggingFace Echo-TTS Space](https://huggingface.co/spaces/jordand/echo-tts-preview) as backend
 - Audio outputs are [CC-BY-NC-SA-4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) licensed
 - Please use responsibly and do not impersonate real people without consent
+- The service falls back to HuggingFace Space API if local model loading fails
