@@ -326,9 +326,8 @@ Set these in Modal Secrets:
 ## Infrastructure
 
 - **Platform:** [Modal](https://modal.com)
-- **GPU:** NVIDIA A10G (24GB VRAM)
+- **Backend:** HuggingFace Space API ([jordand/echo-tts-preview](https://huggingface.co/spaces/jordand/echo-tts-preview))
 - **Scaling:** Serverless, scales to zero when idle
-- **Model:** Echo-TTS loaded directly on GPU
 
 ---
 
