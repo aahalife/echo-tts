@@ -22,7 +22,7 @@ X-API-Key: YOUR_API_KEY
 
 **Example:**
 ```bash
-curl -H "Authorization: Bearer YOUR_API_KEY" https://your-app.vercel.app/api/voices
+curl -H "Authorization: Bearer YOUR_API_KEY" https://echo-tts-seven.vercel.app/api/voices
 ```
 
 **Error Response (401 Unauthorized):**
@@ -132,7 +132,7 @@ Content-Type: multipart/form-data
 
 **Example:**
 ```bash
-curl -X POST https://your-app.vercel.app/api/voices \
+curl -X POST https://echo-tts-seven.vercel.app/api/voices \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -F "audio=@reference.wav" \
   -F "id=john" \
@@ -216,7 +216,7 @@ Content-Type: multipart/form-data
 
 **Example (with registered voice):**
 ```bash
-curl -X POST https://your-app.vercel.app/api/tts \
+curl -X POST https://echo-tts-seven.vercel.app/api/tts \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"text": "Hello world!", "voice_id": "john"}' \
@@ -225,7 +225,7 @@ curl -X POST https://your-app.vercel.app/api/tts \
 
 **Example (with audio file):**
 ```bash
-curl -X POST https://your-app.vercel.app/api/tts \
+curl -X POST https://echo-tts-seven.vercel.app/api/tts \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -F "text=Hello world!" \
   -F "audio=@reference.wav" \
@@ -315,7 +315,7 @@ All errors return JSON with an `error` field:
 ```python
 import requests
 
-BASE_URL = "https://your-app.vercel.app"
+BASE_URL = "https://echo-tts-seven.vercel.app"
 API_KEY = "YOUR_API_KEY"
 
 headers = {"Authorization": f"Bearer {API_KEY}"}
@@ -348,7 +348,7 @@ if response.status_code == 200:
 ### JavaScript
 
 ```javascript
-const BASE_URL = "https://your-app.vercel.app";
+const BASE_URL = "https://echo-tts-seven.vercel.app";
 const API_KEY = "YOUR_API_KEY";
 
 const headers = {
