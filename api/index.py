@@ -136,9 +136,11 @@ def voice_detail(voice_id):
     
     if request.method == 'GET':
         try:
-            blobs = blob_list(prefix=f'voices/{voice_id}.')
-            for blob in blobs:
-                if blob.get('pathname', '').endswith('.json'):
+            # List all and filter (more reliable than prefix search)
+            all_blobs = blob_list(prefix='voices/')
+            for blob in all_blobs:
+                pathname = blob.get('pathname', '')
+                if pathname.startswith(f'voices/{voice_id}.') and pathname.endswith('.json'):
                     metadata = json.loads(blob_get(blob['url']))
                     return jsonify(metadata)
             return jsonify({'error': f'Voice not found: {voice_id}'}), 404
@@ -146,7 +148,9 @@ def voice_detail(voice_id):
             return jsonify({'error': f'Failed to get voice: {str(e)}'}), 500
     else:  # DELETE
         try:
-            blobs = blob_list(prefix=f'voices/{voice_id}.')
+            # List all and filter (more reliable than prefix search)
+            all_blobs = blob_list(prefix='voices/')
+            blobs = [b for b in all_blobs if b.get('pathname', '').startswith(f'voices/{voice_id}.')]
             if not blobs:
                 return jsonify({'error': f'Voice not found: {voice_id}'}), 404
             urls = [blob['url'] for blob in blobs]
@@ -297,9 +301,10 @@ def tts():
         # Get audio URL from voice_id
         audio_url = None
         if voice_id and BLOB_TOKEN:
-            blobs = blob_list(prefix=f'voices/{voice_id}.')
-            for blob in blobs:
-                if blob.get('pathname', '').endswith('.json'):
+            all_blobs = blob_list(prefix='voices/')
+            for blob in all_blobs:
+                pathname = blob.get('pathname', '')
+                if pathname.startswith(f'voices/{voice_id}.') and pathname.endswith('.json'):
                     metadata = json.loads(blob_get(blob['url']))
                     audio_url = metadata.get('audio_url')
                     break
