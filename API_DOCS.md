@@ -206,7 +206,7 @@ Text prompts follow the WhisperD transcription format:
 
 The service scales down after 2 minutes of inactivity to save costs.
 
-**Note on Streaming:** The response uses HTTP chunked transfer encoding, so clients receive audio data progressively. However, the underlying diffusion model generates complete audio in a single pass, so true real-time streaming (where audio plays before generation completes) is not supported.
+**Note on Streaming:** Echo-TTS is a **diffusion model** that generates complete audio in a single pass through iterative denoising. True real-time streaming (word-by-word audio as it's generated) is **not supported** - this would require an autoregressive model like Parler-TTS, XTTS, or VALL-E. The HTTP response uses chunked transfer encoding, but the client must wait for full generation (~15-30 seconds) before playback can begin.
 
 ---
 
