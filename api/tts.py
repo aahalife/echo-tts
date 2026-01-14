@@ -13,14 +13,33 @@ except ImportError:
     GRADIO_AVAILABLE = False
 
 try:
-    from vercel_kv import kv
-    KV_AVAILABLE = True
+    import requests
+    REQUESTS_AVAILABLE = True
 except ImportError:
-    KV_AVAILABLE = False
+    REQUESTS_AVAILABLE = False
+
+BLOB_TOKEN = os.environ.get('BLOB_READ_WRITE_TOKEN', '')
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _utils import verify_api_key, error_response, cors_headers, DEFAULT_PARAMS, HF_SPACE
+
+
+def blob_list(prefix=''):
+    """List blobs with optional prefix."""
+    url = 'https://blob.vercel-storage.com'
+    headers = {'Authorization': f'Bearer {BLOB_TOKEN}'}
+    params = {'prefix': prefix} if prefix else {}
+    response = requests.get(url, headers=headers, params=params)
+    response.raise_for_status()
+    return response.json().get('blobs', [])
+
+
+def blob_get_json(url):
+    """Get JSON blob content from URL."""
+    response = requests.get(url)
+    response.raise_for_status()
+    return response.json()
 
 
 class handler(BaseHTTPRequestHandler):
@@ -98,12 +117,25 @@ class handler(BaseHTTPRequestHandler):
             if not text:
                 return error_response(self, 400, 'Text is required')
             
-            # Resolve audio source
-            if voice_id and KV_AVAILABLE:
-                metadata = kv.get(f'voice:{voice_id}')
-                if not metadata:
+            # Resolve audio source from voice_id
+            if voice_id and BLOB_TOKEN:
+                # Find metadata file for this voice
+                blobs = blob_list(prefix=f'voices/{voice_id}.')
+                metadata_blob = None
+                for blob in blobs:
+                    if blob.get('pathname', '').endswith('.json'):
+                        metadata_blob = blob
+                        break
+                
+                if not metadata_blob:
                     return error_response(self, 404, f'Voice not found: {voice_id}')
-                audio_url = metadata.get('blob_url')
+                
+                metadata = blob_get_json(metadata_blob['url'])
+                audio_url = metadata.get('audio_url')
+                
+                if not audio_url:
+                    return error_response(self, 500, f'Voice has no audio URL: {voice_id}')
+                    
             elif not audio_data and not audio_url:
                 return error_response(self, 400, 'Either voice_id or audio must be provided')
             

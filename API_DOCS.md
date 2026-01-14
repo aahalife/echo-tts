@@ -382,9 +382,7 @@ Set these in your Vercel project:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `API_KEY` | Yes | Secret key for API authentication |
-| `KV_REST_API_URL` | Yes | Vercel KV REST API URL |
-| `KV_REST_API_TOKEN` | Yes | Vercel KV REST API token |
-| `BLOB_READ_WRITE_TOKEN` | Yes | Vercel Blob read/write token |
+| `BLOB_READ_WRITE_TOKEN` | Yes | Vercel Blob read/write token (auto-added when you create Blob storage) |
 | `HF_SPACE` | No | HuggingFace Space (default: jordand/echo-tts-preview) |
 
 ---

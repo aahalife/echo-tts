@@ -1,7 +1,6 @@
 """Shared utilities for Echo-TTS API"""
 import os
 import json
-from functools import wraps
 
 # Environment variables
 API_KEY = os.environ.get('API_KEY', '')

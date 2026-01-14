@@ -4,18 +4,52 @@ import json
 import uuid
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler
-from urllib.parse import parse_qs, urlparse
 import cgi
-import tempfile
 
 try:
-    from vercel_blob import put, list as blob_list
-    from vercel_kv import kv
-    STORAGE_AVAILABLE = True
+    import requests
+    REQUESTS_AVAILABLE = True
 except ImportError:
-    STORAGE_AVAILABLE = False
+    REQUESTS_AVAILABLE = False
 
+BLOB_TOKEN = os.environ.get('BLOB_READ_WRITE_TOKEN', '')
+BLOB_STORE_ID = os.environ.get('BLOB_STORE_ID', '')  # Optional, for custom store
+
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _utils import verify_api_key, error_response, json_response, cors_headers
+
+
+def blob_put(path, data, content_type='application/octet-stream'):
+    """Upload data to Vercel Blob."""
+    url = f'https://blob.vercel-storage.com/{path}'
+    headers = {
+        'Authorization': f'Bearer {BLOB_TOKEN}',
+        'Content-Type': content_type,
+        'x-api-version': '7',
+    }
+    response = requests.put(url, data=data, headers=headers)
+    response.raise_for_status()
+    return response.json()
+
+
+def blob_list(prefix=''):
+    """List blobs with optional prefix."""
+    url = 'https://blob.vercel-storage.com'
+    headers = {
+        'Authorization': f'Bearer {BLOB_TOKEN}',
+    }
+    params = {'prefix': prefix} if prefix else {}
+    response = requests.get(url, headers=headers, params=params)
+    response.raise_for_status()
+    return response.json().get('blobs', [])
+
+
+def blob_get(url):
+    """Get blob content from URL."""
+    response = requests.get(url)
+    response.raise_for_status()
+    return response.content
 
 
 class handler(BaseHTTPRequestHandler):
@@ -27,18 +61,28 @@ class handler(BaseHTTPRequestHandler):
         if not verify_api_key(self.headers):
             return error_response(self, 401, 'Invalid or missing API key')
         
-        if not STORAGE_AVAILABLE:
+        if not BLOB_TOKEN:
             return json_response(self, {'voices': [], 'note': 'Storage not configured'})
         
         try:
-            # Get all voice metadata from KV
-            voice_keys = kv.keys('voice:*')
+            # List all metadata files
+            blobs = blob_list(prefix='voices/')
             voices = []
             
-            for key in voice_keys:
-                voice_data = kv.get(key)
-                if voice_data:
-                    voices.append(voice_data)
+            for blob in blobs:
+                # Only process .json metadata files
+                if blob.get('pathname', '').endswith('.json'):
+                    try:
+                        metadata_content = blob_get(blob['url'])
+                        metadata = json.loads(metadata_content)
+                        voices.append({
+                            'id': metadata.get('id'),
+                            'name': metadata.get('name'),
+                            'created_at': metadata.get('created_at'),
+                            'description': metadata.get('description', ''),
+                        })
+                    except:
+                        pass  # Skip invalid metadata
             
             return json_response(self, {'voices': voices})
         except Exception as e:
@@ -49,8 +93,8 @@ class handler(BaseHTTPRequestHandler):
         if not verify_api_key(self.headers):
             return error_response(self, 401, 'Invalid or missing API key')
         
-        if not STORAGE_AVAILABLE:
-            return error_response(self, 503, 'Storage not configured')
+        if not BLOB_TOKEN:
+            return error_response(self, 503, 'Storage not configured. Set BLOB_READ_WRITE_TOKEN.')
         
         try:
             content_type = self.headers.get('Content-Type', '')
@@ -82,30 +126,44 @@ class handler(BaseHTTPRequestHandler):
                 return error_response(self, 400, 'Invalid voice ID')
             
             # Check if voice already exists
-            existing = kv.get(f'voice:{voice_id}')
-            if existing:
-                return error_response(self, 409, f'Voice ID already exists: {voice_id}')
+            try:
+                existing_blobs = blob_list(prefix=f'voices/{voice_id}.')
+                if any(b.get('pathname', '').endswith('.json') for b in existing_blobs):
+                    return error_response(self, 409, f'Voice ID already exists: {voice_id}')
+            except:
+                pass  # If list fails, proceed anyway
             
             # Determine file extension
             ext = original_filename.rsplit('.', 1)[-1].lower() if '.' in original_filename else 'wav'
             if ext not in ['wav', 'mp3', 'ogg', 'flac', 'm4a', 'aac']:
                 ext = 'wav'
             
-            # Upload audio to Vercel Blob
-            blob_path = f'voices/{voice_id}.{ext}'
-            blob_result = put(blob_path, audio_data, {'access': 'public'})
+            # Determine content type for audio
+            audio_content_types = {
+                'wav': 'audio/wav',
+                'mp3': 'audio/mpeg',
+                'ogg': 'audio/ogg',
+                'flac': 'audio/flac',
+                'm4a': 'audio/mp4',
+                'aac': 'audio/aac',
+            }
+            audio_ct = audio_content_types.get(ext, 'audio/wav')
             
-            # Store metadata in KV
+            # Upload audio to Vercel Blob
+            audio_result = blob_put(f'voices/{voice_id}.{ext}', audio_data, audio_ct)
+            audio_url = audio_result.get('url')
+            
+            # Create and upload metadata
             metadata = {
                 'id': voice_id,
                 'name': name,
                 'description': description,
                 'created_at': datetime.utcnow().isoformat() + 'Z',
-                'blob_url': blob_result['url'],
+                'audio_url': audio_url,
                 'file_size': len(audio_data),
                 'original_filename': original_filename,
             }
-            kv.set(f'voice:{voice_id}', metadata)
+            blob_put(f'voices/{voice_id}.json', json.dumps(metadata).encode(), 'application/json')
             
             return json_response(self, {
                 'id': voice_id,

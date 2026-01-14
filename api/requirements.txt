@@ -1,3 +1,2 @@
 gradio_client>=1.0.0
-vercel-kv>=0.2.0
-vercel-blob>=0.1.0
+requests>=2.28.0
