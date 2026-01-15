@@ -2,7 +2,7 @@
 
 ## Overview
 
-This API provides voice cloning and text-to-speech capabilities powered by the [Echo-TTS model](https://github.com/jordandare/echo-tts). The API runs on Modal with GPU acceleration (NVIDIA A10G) for fast inference.
+This API provides voice cloning and text-to-speech capabilities powered by the [Echo-TTS model](https://github.com/jordandare/echo-tts). The API runs on Modal with **local GPU inference** (NVIDIA A10G, 24GB VRAM) for fast, high-quality speech synthesis.
 
 **Base URL:** `https://aahalife--echo-tts-web-app.modal.run`
 
@@ -12,7 +12,7 @@ This API provides voice cloning and text-to-speech capabilities powered by the [
 
 ## Authentication
 
-All endpoints (except health check) require API key authentication. Provide your API key using one of these methods:
+All endpoints (except health check and root) require API key authentication. Provide your API key using one of these methods:
 
 ### Option 1: Bearer Token (Recommended)
 ```http
@@ -24,30 +24,12 @@ Authorization: Bearer YOUR_API_KEY
 X-API-Key: YOUR_API_KEY
 ```
 
-**Example:**
-```bash
-curl -H "Authorization: Bearer YOUR_API_KEY" https://aahalife--echo-tts-web-app.modal.run/health
-```
-
 **Error Response (401 Unauthorized):**
 ```json
 {
-  "error": "Invalid or missing API key"
+  "detail": "Invalid API key"
 }
 ```
-
----
-
-## Default Settings
-
-The API is configured with optimal defaults:
-
-| Setting | Value | Description |
-|---------|-------|-------------|
-| Speaker KV | **Enabled** | Forces the model to match the reference speaker |
-| Speaker KV Scale | **1.5** | Scale factor for speaker conditioning |
-| Diffusion Steps | 40 | Quality/speed tradeoff |
-| Preset | Independent (High Speaker CFG) | Sampler configuration |
 
 ---
 
@@ -59,18 +41,14 @@ The API is configured with optimal defaults:
 GET /
 ```
 
-Returns service information and available endpoints.
+Returns service information.
 
 **Response:**
 ```json
 {
-  "service": "Echo-TTS Modal API",
-  "version": "1.0.0",
+  "service": "Echo-TTS",
   "gpu": "A10G",
-  "endpoints": {
-    "GET /health": "Health check",
-    "POST /tts": "Generate speech"
-  }
+  "inference": "local"
 }
 ```
 
@@ -87,9 +65,8 @@ Returns service health status.
 **Response:**
 ```json
 {
-  "status": "healthy",
-  "service": "echo-tts-modal",
-  "timestamp": "2025-01-14T10:00:00Z"
+  "status": "ok",
+  "ts": "2026-01-15T01:02:04.352309"
 }
 ```
 
@@ -100,20 +77,19 @@ Returns service health status.
 ```http
 POST /tts
 Content-Type: application/json
+Authorization: Bearer YOUR_API_KEY
 ```
 
-Generate speech from text using a registered voice.
+Generate speech from text using a speaker reference audio.
 
 **Request Body:**
 ```json
 {
   "text": "Hello, this is a test of the voice cloning system.",
-  "voice_id": "john",
-  "num_steps": 40,
+  "speaker_audio_url": "https://example.com/speaker.wav",
+  "num_steps": 24,
   "rng_seed": 0,
-  "speaker_kv_enable": true,
-  "speaker_kv_scale": 1.5,
-  "preset_name": "Independent (High Speaker CFG)"
+  "cfg_scale_speaker": 8.0
 }
 ```
 
@@ -122,25 +98,26 @@ Generate speech from text using a registered voice.
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `text` | string | Yes | - | Text to synthesize |
-| `voice_id` | string | Yes | - | ID of a registered voice |
-| `num_steps` | int | No | 40 | Diffusion steps (1-80) |
+| `speaker_audio_url` | string | Yes | - | URL to speaker reference audio (WAV, MP3, OGG, etc.) |
+| `num_steps` | int | No | 24 | Diffusion steps (more = higher quality, slower). Range: 16-48 recommended |
 | `rng_seed` | int | No | 0 | Random seed for reproducibility |
-| `speaker_kv_enable` | bool | No | true | Enable speaker KV attention |
-| `speaker_kv_scale` | float | No | 1.5 | Speaker KV scale (1.0-2.0) |
-| `preset_name` | string | No | "Independent (High Speaker CFG)" | Sampler preset |
+| `cfg_scale_speaker` | float | No | 8.0 | Speaker guidance scale (higher = closer to reference voice) |
 
-**Example:**
+**Example Request:**
 ```bash
 curl -X POST https://aahalife--echo-tts-web-app.modal.run/tts \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"text": "Hello world!", "voice_id": "john"}' \
+  -d '{
+    "text": "Hello world! This is Echo TTS speaking.",
+    "speaker_audio_url": "https://example.com/speaker.wav"
+  }' \
   --output output.wav
 ```
 
 **Response:**
 
-Returns WAV audio file directly (Content-Type: audio/wav).
+Returns WAV audio file directly (Content-Type: `audio/wav`).
 
 ---
 
@@ -148,45 +125,27 @@ Returns WAV audio file directly (Content-Type: audio/wav).
 
 | Parameter | Default | Range | Description |
 |-----------|---------|-------|-------------|
-| `num_steps` | 40 | 1-80 | Number of diffusion steps. Higher = better quality, slower. |
-| `rng_seed` | 0 | any int | Random seed for reproducible output. |
-| `speaker_kv_enable` | true | true/false | Enable speaker KV attention scaling. |
-| `speaker_kv_scale` | 1.5 | 1.0-2.0 | Scale factor for speaker KV. Higher = stronger voice adherence. |
-| `preset_name` | "Independent (High Speaker CFG)" | see below | Sampler preset. |
+| `num_steps` | 24 | 16-48 | Number of diffusion steps. Higher = better quality but slower. 24 is a good balance. |
+| `rng_seed` | 0 | any int | Random seed for reproducible output |
+| `cfg_scale_speaker` | 8.0 | 1.0-15.0 | Speaker guidance scale. Higher = stronger voice adherence |
 
-**Available Presets:**
-- `Independent (High Speaker CFG)` (recommended)
-- `Independent (High Speaker CFG) Flat`
-- `Independent (High CFG)`
-- `Independent (High CFG) Flat`
-- `Independent`
-- `Independent Flat`
+### Internal Parameters (hardcoded for optimal quality)
 
----
-
-## Voice Management
-
-Voices are stored in Vercel Blob storage and referenced by ID. Voice registration is managed separately from the TTS endpoint.
-
-To register a voice, the audio file metadata must be stored in Vercel Blob at `voices/{voice_id}.meta.json` with the format:
-```json
-{
-  "id": "john",
-  "name": "John's Voice",
-  "audio_url": "https://blob.vercel-storage.com/...",
-  "created_at": "2025-01-14T10:00:00Z"
-}
-```
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `cfg_scale_text` | 3.0 | Text guidance scale |
+| `speaker_kv_scale` | 1.5 | Speaker KV attention scale |
+| `speaker_kv_max_layers` | 24 | Number of layers for speaker KV |
+| `truncation_factor` | 0.8 | Truncation for sampling |
 
 ---
 
 ## Text Format
 
-Text prompts follow the WhisperD transcription format:
-
-- The API automatically prepends `[S1] ` if not present
+- The API automatically prepends `[S1] ` if the text doesn't start with a speaker tag
 - **Commas** function as pauses
-- **Exclamation points** may increase expressiveness
+- **Periods** and **exclamation points** affect intonation
+- Multi-speaker format: `[S1] First speaker says this. [S2] Second speaker says this.`
 
 ---
 
@@ -194,29 +153,31 @@ Text prompts follow the WhisperD transcription format:
 
 - **Duration:** 10-30 seconds works well; up to 5 minutes supported
 - **Quality:** Clear audio with minimal background noise is best
-- **Format:** WAV, MP3, OGG, FLAC, M4A, AAC
+- **Format:** WAV, MP3, OGG, FLAC, M4A supported
+- **Sample rate:** Any (automatically resampled to 44.1kHz)
 
 ---
 
 ## Response Times
 
-- **Cold start:** ~45-60 seconds (model loading + inference)
-- **Warm inference:** 5-20 seconds per request (depending on text length)
-- **Timeout:** 300 seconds (5 minutes)
+| Scenario | Time |
+|----------|------|
+| **Cold start** | ~15-20 seconds (model loading) |
+| **Warm inference** | ~2-5 seconds (depending on text length) |
+| **Container keep-alive** | 15 minutes after last request |
+| **Request timeout** | 10 minutes |
 
-The service scales down after 2 minutes of inactivity to save costs.
-
-**Note on Streaming:** Echo-TTS is a **diffusion model** that generates complete audio in a single pass through iterative denoising. True real-time streaming (word-by-word audio as it's generated) is **not supported** - this would require an autoregressive model like Parler-TTS, XTTS, or VALL-E. The HTTP response uses chunked transfer encoding, but the client must wait for full generation (~15-30 seconds) before playback can begin.
+**Tip:** Make a health check request first to warm up the container before time-sensitive TTS requests.
 
 ---
 
 ## Error Handling
 
-All errors return JSON with an `error` field:
+All errors return JSON with a `detail` field:
 
 ```json
 {
-  "error": "Error description here"
+  "detail": "Error description here"
 }
 ```
 
@@ -225,9 +186,8 @@ All errors return JSON with an `error` field:
 | Code | Description |
 |------|-------------|
 | 200 | Success |
-| 400 | Bad request (missing parameters) |
+| 400 | Bad request (missing required parameters) |
 | 401 | Unauthorized (invalid or missing API key) |
-| 404 | Voice not found |
 | 500 | Server error (TTS generation failed) |
 
 ---
@@ -253,7 +213,8 @@ response = requests.post(
     headers=headers,
     json={
         "text": "Hello from Python!",
-        "voice_id": "myvoice"
+        "speaker_audio_url": "https://example.com/speaker.wav",
+        "num_steps": 24
     }
 )
 
@@ -265,30 +226,35 @@ else:
     print(f"Error: {response.json()}")
 ```
 
-### JavaScript
+### JavaScript / TypeScript
 
 ```javascript
 const BASE_URL = "https://aahalife--echo-tts-web-app.modal.run";
 const API_KEY = "YOUR_API_KEY";
 
-async function generateSpeech(text, voiceId) {
+async function generateSpeech(text, speakerAudioUrl) {
   const response = await fetch(`${BASE_URL}/tts`, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${API_KEY}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ text, voice_id: voiceId })
+    body: JSON.stringify({ 
+      text, 
+      speaker_audio_url: speakerAudioUrl,
+      num_steps: 24
+    })
   });
   
-  if (response.ok) {
-    return response.blob();
+  if (!response.ok) {
+    throw new Error(await response.text());
   }
-  throw new Error(await response.text());
+  
+  return response.blob();
 }
 
 // Usage
-generateSpeech("Hello world!", "myvoice")
+generateSpeech("Hello world!", "https://example.com/speaker.wav")
   .then(blob => {
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
@@ -299,35 +265,39 @@ generateSpeech("Hello world!", "myvoice")
 ### cURL
 
 ```bash
-# Health check
+# Health check (no auth required)
 curl https://aahalife--echo-tts-web-app.modal.run/health
 
 # Generate speech
 curl -X POST https://aahalife--echo-tts-web-app.modal.run/tts \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"text": "Hello world!", "voice_id": "john"}' \
+  -d '{
+    "text": "Hello world!",
+    "speaker_audio_url": "https://example.com/speaker.wav"
+  }' \
   --output output.wav
 ```
-
----
-
-## Environment Variables
-
-Set these in Modal Secrets:
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `API_KEY` | Yes | Secret key for API authentication |
-| `BLOB_READ_WRITE_TOKEN` | Yes | Vercel Blob read/write token for voice storage |
 
 ---
 
 ## Infrastructure
 
 - **Platform:** [Modal](https://modal.com)
-- **Backend:** HuggingFace Space API ([jordand/echo-tts-preview](https://huggingface.co/spaces/jordand/echo-tts-preview))
+- **GPU:** NVIDIA A10G (24GB VRAM)
+- **Model:** Echo-TTS Base (2.4B parameters, bfloat16)
+- **Inference:** Local GPU (no external API calls)
 - **Scaling:** Serverless, scales to zero when idle
+
+---
+
+## Environment Variables (Modal Secrets)
+
+Set in Modal secret `echo-tts-secrets`:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `API_KEY` | Yes | Secret key for API authentication |
 
 ---
 
@@ -335,4 +305,5 @@ Set these in Modal Secrets:
 
 - Audio outputs are [CC-BY-NC-SA-4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) licensed
 - Please use responsibly and do not impersonate real people without consent
-- The service falls back to HuggingFace Space API if local model loading fails
+- The model runs locally on GPU - no data is sent to external services
+- **Streaming not supported:** Echo-TTS is a diffusion model that generates complete audio in a single pass. The full audio must be generated before playback can begin.
